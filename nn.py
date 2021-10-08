@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Callable
-from activators import sigmoid
+from typing import Callable, Type
+from activators import sigmoid, softmax, rmse
 import tensorflow as tf
 
 import numpy as np
@@ -8,50 +8,63 @@ import numpy as np
 
 class Network:
     layers = []
-    def __init__(self, input_n):
-        self.input_n = input_n
+    def __init__(self, input_n, loss: Callable):
+        self.input_n: int = input_n
+        self.loss: Callable = loss
 
-    def add_layer(self, Layer_t, neurons, activator):
+    def add_layer(self,
+                  Layer_t: Type,
+                  neurons: int,
+                  activator: Callable):
         if self.layers:
             self.layers.append(
                 Layer_t(neurons,
                         activator,
-                        self.layers[-1].neurons.shape[0]))
+                        self.layers[-1].weights.shape[0]))
         else:
             self.layers.append(Layer_t(neurons,
                                        activator,
                                        self.input_n))
 
-    def calculate(self, input):
-        output = input
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        output = X
         for layer in self.layers:
             output = layer.forward(output)
         return output
 
+    def train(self, X: np.ndarray, Y: np.ndarray):
+        preds = self.predict(X)
+        targets = np.zeros((len(Y), self.layers[-1].neurons))
+        for y in Y:
+            targets[y] = 1.0
+        loss = self.loss(preds, targets)
+        totalloss = np.mean(loss, axis=1)
+        return np.mean(1 - totalloss)
 
 class LayerDense:
     def __init__(self,
                  neurons: int,
                  activator: Callable,
-                 input_n):
-        self.neurons = np.random.randn(neurons, input_n)
-        self.activator = activator
-        self.input_n = input_n
+                 input_n: int):
+        self.input_n = input_n # number of weights per neuron
+        self.neurons = neurons # number of sets of weights
 
-    def forward(self, input):
-        return self.activator(np.dot(self.neurons, input))
+        self.weights = 0.1 * np.random.randn(neurons, input_n)
+        self.biases = np.zeros((neurons, 1))
+
+        self.activator = activator
+
+    def forward(self, input: np.ndarray) -> np.ndarray:
+        return self.activator(
+            np.dot(self.weights, input) + self.biases)
 
 
 if __name__ == '__main__':
-    input = np.array([
-        [2,3,4,5],
-        [4,5,6,7],
-        [8,9,10,11]
-    ])
-    nn = Network(784)
+
+    nn = Network(784, rmse)
     nn.add_layer(LayerDense, 128, sigmoid)
     nn.add_layer(LayerDense, 128, sigmoid)
-    nn.add_layer(LayerDense, 2, sigmoid)
+    nn.add_layer(LayerDense, 10, softmax)
 
     mnist = tf.keras.datasets.mnist
 
@@ -60,5 +73,9 @@ if __name__ == '__main__':
     x_train = tf.keras.utils.normalize(x_train, axis=1)
     x_test = tf.keras.utils.normalize(x_test, axis=1)
 
-    for img in x_train[:10]:
-        print(nn.calculate(img.flatten()))
+    batch_size = 10
+
+    res = nn.train(x_train[:10].reshape(batch_size,784).T,
+                   y_train[:10])
+
+    print(res)
