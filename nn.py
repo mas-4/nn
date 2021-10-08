@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Callable, Type
-from activators import sigmoid, softmax, rmse
+from activators import sigmoid, softmax, rmse, onehot
 import tensorflow as tf
 
 import numpy as np
@@ -33,13 +33,18 @@ class Network:
         return output
 
     def train(self, X: np.ndarray, Y: np.ndarray):
+        targets = onehot(Y, self.layers[-1].neurons)
+
         preds = self.predict(X)
-        targets = np.zeros((len(Y), self.layers[-1].neurons))
-        for y in Y:
-            targets[y] = 1.0
+
         loss = self.loss(preds, targets)
+
+        for layer in self.layers:
+            layer.neurons += loss * layer.activator(layer.neurons, d=True)
+
         totalloss = np.mean(loss, axis=1)
         return np.mean(1 - totalloss)
+
 
 class LayerDense:
     def __init__(self,
@@ -63,7 +68,6 @@ if __name__ == '__main__':
 
     nn = Network(784, rmse)
     nn.add_layer(LayerDense, 128, sigmoid)
-    nn.add_layer(LayerDense, 128, sigmoid)
     nn.add_layer(LayerDense, 10, softmax)
 
     mnist = tf.keras.datasets.mnist
@@ -75,7 +79,7 @@ if __name__ == '__main__':
 
     batch_size = 10
 
-    res = nn.train(x_train[:10].reshape(batch_size,784).T,
-                   y_train[:10])
-
-    print(res)
+    for i in range(1, len(x_train), batch_size):
+        loss = nn.train(x_train[i:i+batch_size].reshape(batch_size,784).T,
+                        y_train[i:i+batch_size])
+        print(loss)
